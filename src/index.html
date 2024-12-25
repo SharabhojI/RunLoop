@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Home</title>
+        <link href="styles.css" type="text/css" rel="stylesheet" />
+        <script src="script.js" defer></script>
+    </head>
+
+    <body>
+        <h1>Preliminary Setup</h1>
+        <div>
+            <input type="text" id="location-input" placeholder="Enter starting/end point" />
+            <input type="number" id="distance-input" placeholder="Enter distance (km)" />
+            <input type="button" value="Plan Run" onclick="geocodeAddress()" />
+        </div>
+        <div id="map"></div>        
+    </body>
+</html>
