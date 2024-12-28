@@ -9,12 +9,13 @@
     </head>
 
     <body>
-        <h1>Preliminary Setup</h1>
-        <div>
+        <div id="inputs-container">
+            <h1>Preliminary Setup</h1>
             <input type="text" id="location-input" placeholder="Enter starting/end point" />
             <input type="number" id="distance-input" placeholder="Enter distance (km)" />
             <input type="button" value="Plan Run" onclick="geocodeAddress()" />
         </div>
-        <div id="map"></div>        
+        <div id="map"></div>
+        <div id="routes-container"></div>        
     </body>
 </html>
