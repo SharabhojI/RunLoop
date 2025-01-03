@@ -21,8 +21,7 @@ let map;
 let directionsService;
 let directionsRenderers = [];
 let routeInfo = [];
-let markers = []; 
-let circle; 
+let markers = [];
 
 function initMap() {
     map = new google.maps.Map(document.getElementById("map"), {
@@ -41,9 +40,7 @@ function initMap() {
     });
 
     autocomplete.addListener("place_changed", () => {
-        // Clear previous markers and circle
         clearMarkers();
-
         const place = autocomplete.getPlace();
         if (!place.geometry) {
             alert("Place not found");
@@ -55,181 +52,205 @@ function initMap() {
             map: map,
             position: place.geometry.location,
         });
-        markers.push(originMarker); 
-        map.setZoom(20);
+        markers.push(originMarker);
+        map.setZoom(15);
     });
 }
 
 function geocodeAddress() {
-    // Clear previous markers and circle
     clearMarkers();
+    clearRoutes();
 
     const geocoder = new google.maps.Geocoder();
     const address = document.getElementById("location-input").value;
-    const distance = parseFloat(document.getElementById("distance-input").value);
+    const totalDistance = parseFloat(document.getElementById("distance-input").value);
+    
+    if (!totalDistance || totalDistance <= 0) {
+        alert("Please enter a valid distance");
+        return;
+    }
 
     geocoder.geocode({ address }, function (results, status) {
         if (status === "OK") {
-            const location = results[0].geometry.location;
-            map.setCenter(location);
-            const originMarker = new google.maps.Marker({
+            const startLocation = results[0].geometry.location;
+            map.setCenter(startLocation);
+            
+            const startMarker = new google.maps.Marker({
                 map: map,
-                position: location,
+                position: startLocation,
             });
-            markers.push(originMarker); 
+            markers.push(startMarker);
 
-            // Create a new circle for the location
-            circle = new google.maps.Circle({
-                map: map,
-                center: location,
-                radius: distance * 1000,
-                strokeColor: "#FF0000",
-                strokeOpacity: 0.8,
-                strokeWeight: 2,
-                fillColor: "#FF0000",
-                fillOpacity: 0.35,
-            });
-
-            // Generate points on the circle and plot them
-            const circlePoints = generateCirclePoints(location, distance);
-            plotPoint(circlePoints);
-
-            // Generate routes to each point
-            generateRoutes(location, circlePoints);
+            generateOutAndBack(startLocation, totalDistance);
         } else {
             alert("Geocode was not successful for the following reason: " + status);
         }
     });
 }
 
-function generateCirclePoints(center, radius, numPoints = 12) {
-    const turfCenter = [center.lng(), center.lat()];
-    const turfCircle = turf.circle(turfCenter, radius, { steps: numPoints, units: "kilometers" });
-    return turfCircle.geometry.coordinates[0];
+function generateOutAndBack(startLocation, totalDistance) {
+    const halfDistance = totalDistance / 2;
+    const numDirections = 8; // 8 compass directions
+    const angleStep = 360 / numDirections;
+    
+    // Clear existing routes
+    clearRoutes();
+    
+    // Initialize route generation
+    const routePromises = [];
+    
+    // Generate routes in different directions
+    for (let i = 0; i < numDirections; i++) {
+        const angle = i * angleStep;
+        const destination = calculateDestinationPoint(startLocation, halfDistance, angle);
+        
+        routePromises.push(generateRoute(startLocation, destination, i));
+    }
+
+    // Process all routes
+    Promise.all(routePromises)
+        .then(routes => {
+            const validRoutes = routes.filter(route => route !== null);
+            if (validRoutes.length === 0) {
+                alert("No valid routes found. Try a different distance or location.");
+                return;
+            }
+            displayRoutes(validRoutes);
+        })
+        .catch(error => {
+            console.error("Error generating routes:", error);
+            alert("Error generating routes. Please try again.");
+        });
 }
 
-function plotPoint(points) {
-    points.forEach((point) => {
-        const blueMarker = new google.maps.Marker({
-            map: map,
-            position: { lat: point[1], lng: point[0] },
-            icon: {
-                url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+function calculateDestinationPoint(start, distance, angle) {
+    const point = turf.point([start.lng(), start.lat()]);
+    const destination = turf.destination(point, distance, angle, { units: 'kilometers' });
+    return new google.maps.LatLng(
+        destination.geometry.coordinates[1], 
+        destination.geometry.coordinates[0]
+    );
+}
+
+function generateRoute(start, destination, index) {
+    return new Promise((resolve, reject) => {
+        const request = {
+            origin: start,
+            destination: destination,
+            travelMode: google.maps.TravelMode.WALKING,
+        };
+
+        directionsService.route(request, (result, status) => {
+            if (status === google.maps.DirectionsStatus.OK) {
+                const renderer = new google.maps.DirectionsRenderer({
+                    map: null, // Don't display immediately
+                    directions: result,
+                    suppressMarkers: true,
+                    polylineOptions: {
+                        strokeColor: "blue",
+                        strokeOpacity: 0.5,
+                    },
+                });
+
+                resolve({
+                    index,
+                    renderer,
+                    routeDetails: result.routes[0],
+                    outbound: true // Flag to indicate this is the outbound route
+                });
+            } else {
+                resolve(null); // Return null for invalid routes
             }
         });
-
-        markers.push(blueMarker);
     });
 }
 
-function clearMarkers() {
-    // Remove all markers
-    markers.forEach(marker => marker.setMap(null));
-    markers = []; // Clear the array
-
-    // Clear the circle
-    if (circle) {
-        circle.setMap(null);
-    }
-}
-
-function generateRoutes(location, points) {
+function displayRoutes(routes) {
     const routesTable = document.getElementById("routes-table");
     const tbody = routesTable.getElementsByTagName("tbody")[0];
     tbody.innerHTML = "";
 
-    directionsRenderers = [];
-    routeInfo = [];
+    routes.forEach((route, index) => {
+        if (!route) return; // Skip null routes
 
-    const sortedRoutes = points.map((point, index) => {
-        const endPoint = { lat: point[1], lng: point[0] };
-        const request = {
-            origin: location,
-            destination: endPoint,
-            travelMode: "WALKING",
-        };
+        const row = tbody.insertRow();
+        const selectionCell = row.insertCell(0);
+        const routeNameCell = row.insertCell(1);
+        const distanceCell = row.insertCell(2);
 
-        return new Promise((resolve, reject) => {
-            directionsService.route(request, (result, status) => {
-                if (status === google.maps.DirectionsStatus.OK) {
-                    const renderer = new google.maps.DirectionsRenderer({
-                        map: map,
-                        directions: result,
-                        suppressMarkers: true,
-                    });
+        const radioButton = document.createElement("input");
+        radioButton.type = "radio";
+        radioButton.name = "route";
+        radioButton.value = index;
+        radioButton.onclick = () => highlightRoute(index, routes);
 
-                    renderer.setOptions({
-                        polylineOptions: {
-                            strokeColor: "blue",
-                            strokeOpacity: 0.5,
-                        },
-                    });
+        selectionCell.appendChild(radioButton);
+        routeNameCell.textContent = `Route ${index + 1}`;
 
-                    directionsRenderers.push(renderer);
-                    routeInfo.push({ renderer, routeDetails: result.routes[0] });
+        // Double the distance for out and back
+        const singleDistance = parseFloat(route.routeDetails.legs[0].distance.text);
+        const totalDistance = (singleDistance * 2).toFixed(1);
+        distanceCell.textContent = `${totalDistance} km`;
 
-                    resolve({
-                        index,
-                        routeDetails: result.routes[0],
-                    });
-                } else {
-                    reject(`Error fetching directions for point ${index}: ${status}`);
-                }
-            });
-        });
+        // Select first route by default
+        if (index === 0) {
+            radioButton.checked = true;
+            highlightRoute(index, routes);
+        }
     });
-
-    Promise.all(sortedRoutes)
-        .then((routes) => {
-            // Sort the routes based on their index
-            routes.sort((a, b) => a.index - b.index);
-
-            routes.forEach((routeData) => {
-                const route = routeData.routeDetails;
-                const row = tbody.insertRow();
-                const selectionCell = row.insertCell(0);
-                const routeNameCell = row.insertCell(1);
-                const distanceCell = row.insertCell(2);
-
-                const radioButton = document.createElement("input");
-                radioButton.type = "radio";
-                radioButton.name = "route";
-                radioButton.value = routeData.index;
-                radioButton.onclick = () => highlightRoute(routeData.index);
-
-                selectionCell.appendChild(radioButton);
-                routeNameCell.textContent = `Route ${routeData.index + 1}`;
-
-                const routeDistance = route.legs[0].distance.text;
-                distanceCell.textContent = routeDistance;
-
-                // Select the first route by default
-                if (routeData.index === 0) {
-                    radioButton.checked = true;
-                    highlightRoute(routeData.index);
-                }
-            });
-        })
-        .catch((error) => {
-            console.error("Error generating routes:", error);
-        });
 }
 
-function highlightRoute(index) {
-    // Hide all routes
-    directionsRenderers.forEach(renderer => renderer.setMap(null));
+function highlightRoute(index, routes) {
+    // Clear all current routes
+    clearRoutes();
+
+    const selectedRoute = routes[index];
+    if (!selectedRoute) return;
 
     // Show the selected route
-    const selectedRoute = directionsRenderers[index];
-    selectedRoute.setMap(map);
+    selectedRoute.renderer.setMap(map);
 
-    // Deselect all radio buttons
-    const radioButtons = document.querySelectorAll('input[name="route"]');
-    radioButtons.forEach(radio => radio.checked = false);
+    // Create and show the return route
+    const result = selectedRoute.renderer.getDirections();
+    const returnResult = {
+        routes: [{
+            legs: [{
+                steps: [...result.routes[0].legs[0].steps].reverse(),
+                distance: result.routes[0].legs[0].distance,
+                duration: result.routes[0].legs[0].duration,
+                start_location: result.routes[0].legs[0].end_location,
+                end_location: result.routes[0].legs[0].start_location
+            }],
+            overview_path: [...result.routes[0].overview_path].reverse()
+        }]
+    };
 
-    // Select the clicked radio button
-    const clickedRadioButton = document.querySelector(`input[name="route"][value="${index}"]`);
-    if (clickedRadioButton) {
-        clickedRadioButton.checked = true;
-    }
+    const returnRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        directions: returnResult,
+        suppressMarkers: true,
+        polylineOptions: {
+            strokeColor: "red",
+            strokeOpacity: 0.5,
+        },
+    });
+
+    directionsRenderers = [selectedRoute.renderer, returnRenderer];
+
+    // Fit map bounds to show entire route
+    const bounds = new google.maps.LatLngBounds();
+    result.routes[0].overview_path.forEach(point => bounds.extend(point));
+    map.fitBounds(bounds);
+}
+
+function clearMarkers() {
+    markers.forEach(marker => marker.setMap(null));
+    markers = [];
+}
+
+function clearRoutes() {
+    directionsRenderers.forEach(renderer => {
+        if (renderer) renderer.setMap(null);
+    });
+    directionsRenderers = [];
 }

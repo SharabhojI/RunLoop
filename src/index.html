@@ -3,32 +3,38 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Home</title>
+        <title>RunLoop</title>
         <link href="styles.css" type="text/css" rel="stylesheet" />
         <script src="https://cdn.jsdelivr.net/npm/@turf/turf"></script>
         <script src="script.js" defer></script>
     </head>
 
     <body>
-        <div id="inputs-container">
-            <h1>Preliminary Setup</h1>
-            <input type="text" id="location-input" placeholder="Enter starting/end point" />
-            <input type="number" id="distance-input" placeholder="Enter distance (km)" />
-            <input type="button" value="Plan Run" onclick="geocodeAddress()" />
-        </div>
-        <div id="map"></div>
-        <div id="routes-container">
-            <h3>Route Selection</h3>
-            <table id="routes-table">
-                <thead>
-                    <tr>
-                        <th>Select</th>
-                        <th>Route</th>
-                        <th>Distance (km)</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>        
+        <nav class="navbar">
+            <div class="logo">
+                <img src="runloop_logo.png" alt="logo" />
+            </div>
+            <div id="inputs-container">
+                <input type="text" id="location-input" placeholder="Enter starting/end point" />
+                <input type="number" id="distance-input" placeholder="Enter distance (km)" />
+                <input type="button" value="Plan Run" onclick="geocodeAddress()" />
+            </div>
+        </nav>
+        <main>
+            <div id="map"></div>
+            <div id="routes-container">
+                <h3>Route Selection</h3>
+                <table id="routes-table">
+                    <thead>
+                        <tr>
+                            <th>Select</th>
+                            <th>Route</th>
+                            <th>Distance (km)</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </main>        
     </body>
 </html>
