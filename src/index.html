@@ -17,6 +17,16 @@
             <div id="inputs-container">
                 <input type="text" id="location-input" placeholder="Enter starting/end point" />
                 <input type="number" id="distance-input" placeholder="Enter distance (km)" />
+                <div class="route-type">
+                    <label>
+                        <input type="radio" name="routeType" value="outAndBack" checked>
+                        Out & Back
+                    </label>
+                    <label>
+                        <input type="radio" name="routeType" value="loop">
+                        Loop
+                    </label>
+                </div>
                 <input type="button" value="Plan Run" onclick="geocodeAddress()" />
             </div>
         </nav>

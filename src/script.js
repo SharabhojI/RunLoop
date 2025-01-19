@@ -61,12 +61,19 @@ function geocodeAddress() {
     clearMarkers();
     clearRoutes();
 
+    const button = document.querySelector('#inputs-container input[type="button"]');
+    button.classList.add('loading');
+    const originalText = button.value;
+    button.value = '';
+
     const geocoder = new google.maps.Geocoder();
     const address = document.getElementById("location-input").value;
     const totalDistance = parseFloat(document.getElementById("distance-input").value);
     
     if (!totalDistance || totalDistance <= 0) {
         alert("Please enter a valid distance");
+        button.classList.remove('loading');
+        button.value = originalText;
         return;
     }
 
@@ -81,33 +88,34 @@ function geocodeAddress() {
             });
             markers.push(startMarker);
 
-            generateOutAndBack(startLocation, totalDistance);
+            const routeType = document.querySelector('input[name="routeType"]:checked').value;
+            if (routeType === 'outAndBack') {
+                generateOutAndBack(startLocation, totalDistance);
+            } else {
+                generateLoop(startLocation, totalDistance);
+            }
         } else {
             alert("Geocode was not successful for the following reason: " + status);
         }
+        button.classList.remove('loading');
+        button.value = originalText;
     });
 }
 
 function generateOutAndBack(startLocation, totalDistance) {
     const halfDistance = totalDistance / 2;
-    const numDirections = 8; // 8 compass directions
+    const numDirections = 8;
     const angleStep = 360 / numDirections;
     
-    // Clear existing routes
     clearRoutes();
-    
-    // Initialize route generation
     const routePromises = [];
     
-    // Generate routes in different directions
     for (let i = 0; i < numDirections; i++) {
         const angle = i * angleStep;
         const destination = calculateDestinationPoint(startLocation, halfDistance, angle);
-        
-        routePromises.push(generateRoute(startLocation, destination, i));
+        routePromises.push(generateRoute(startLocation, destination, i, false));
     }
 
-    // Process all routes
     Promise.all(routePromises)
         .then(routes => {
             const validRoutes = routes.filter(route => route !== null);
@@ -132,9 +140,15 @@ function calculateDestinationPoint(start, distance, angle) {
     );
 }
 
-function generateRoute(start, destination, index) {
+function generateRoute(start, destination, index, isLoop = false) {
     return new Promise((resolve, reject) => {
-        const request = {
+        const request = isLoop ? {
+            origin: start,
+            destination: start,
+            waypoints: [{ location: destination, stopover: false }],
+            travelMode: google.maps.TravelMode.WALKING,
+            optimizeWaypoints: true
+        } : {
             origin: start,
             destination: destination,
             travelMode: google.maps.TravelMode.WALKING,
@@ -143,7 +157,7 @@ function generateRoute(start, destination, index) {
         directionsService.route(request, (result, status) => {
             if (status === google.maps.DirectionsStatus.OK) {
                 const renderer = new google.maps.DirectionsRenderer({
-                    map: null, // Don't display immediately
+                    map: null,
                     directions: result,
                     suppressMarkers: true,
                     polylineOptions: {
@@ -156,10 +170,10 @@ function generateRoute(start, destination, index) {
                     index,
                     renderer,
                     routeDetails: result.routes[0],
-                    outbound: true // Flag to indicate this is the outbound route
+                    isLoop: isLoop
                 });
             } else {
-                resolve(null); // Return null for invalid routes
+                resolve(null);
             }
         });
     });
@@ -171,9 +185,10 @@ function displayRoutes(routes) {
     tbody.innerHTML = "";
 
     routes.forEach((route, index) => {
-        if (!route) return; // Skip null routes
+        if (!route) return;
 
         const row = tbody.insertRow();
+        row.className = 'route-row';
         const selectionCell = row.insertCell(0);
         const routeNameCell = row.insertCell(1);
         const distanceCell = row.insertCell(2);
@@ -187,65 +202,102 @@ function displayRoutes(routes) {
         selectionCell.appendChild(radioButton);
         routeNameCell.textContent = `Route ${index + 1}`;
 
-        // Double the distance for out and back
         const singleDistance = parseFloat(route.routeDetails.legs[0].distance.text);
-        const totalDistance = (singleDistance * 2).toFixed(1);
-        distanceCell.textContent = `${totalDistance} km`;
+        const totalDistance = route.isLoop ? singleDistance.toFixed(1) : (singleDistance * 2).toFixed(1);
+        
+        const badge = document.createElement("div");
+        badge.className = `distance-badge ${getDistanceBadgeClass(totalDistance)}`;
+        badge.textContent = `${totalDistance} km`;
+        distanceCell.appendChild(badge);
 
-        // Select first route by default
         if (index === 0) {
             radioButton.checked = true;
+            row.classList.add('active');
             highlightRoute(index, routes);
         }
     });
 }
 
+function getDistanceBadgeClass(distance) {
+    if (distance <= 5) return 'short';
+    if (distance <= 10) return 'medium';
+    return 'long';
+}
+
 function highlightRoute(index, routes) {
-    // Clear all current routes
     clearRoutes();
+
+    const rows = document.querySelectorAll('.route-row');
+    rows.forEach(row => row.classList.remove('active'));
+    rows[index].classList.add('active');
 
     const selectedRoute = routes[index];
     if (!selectedRoute) return;
 
-    // Show the selected route
-    selectedRoute.renderer.setMap(map);
+    if (selectedRoute.isLoop) {
+        selectedRoute.renderer.setMap(map);
+        directionsRenderers = [selectedRoute.renderer];
+    } else {
+        selectedRoute.renderer.setMap(map);
 
-    // Create and show the return route
-    const result = selectedRoute.renderer.getDirections();
-    const returnResult = {
-        routes: [{
-            legs: [{
-                steps: [...result.routes[0].legs[0].steps].reverse(),
-                distance: result.routes[0].legs[0].distance,
-                duration: result.routes[0].legs[0].duration,
-                start_location: result.routes[0].legs[0].end_location,
-                end_location: result.routes[0].legs[0].start_location
-            }],
-            overview_path: [...result.routes[0].overview_path].reverse()
-        }]
-    };
+        const result = selectedRoute.renderer.getDirections();
+        const returnResult = {
+            routes: [{
+                legs: [{
+                    steps: [...result.routes[0].legs[0].steps].reverse(),
+                    distance: result.routes[0].legs[0].distance,
+                    duration: result.routes[0].legs[0].duration,
+                    start_location: result.routes[0].legs[0].end_location,
+                    end_location: result.routes[0].legs[0].start_location
+                }],
+                overview_path: [...result.routes[0].overview_path].reverse()
+            }]
+        };
 
-    const returnRenderer = new google.maps.DirectionsRenderer({
-        map: map,
-        directions: returnResult,
-        suppressMarkers: true,
-        polylineOptions: {
-            strokeColor: "red",
-            strokeOpacity: 0.5,
-        },
-    });
+        const returnRenderer = new google.maps.DirectionsRenderer({
+            map: map,
+            directions: returnResult,
+            suppressMarkers: true,
+            polylineOptions: {
+                strokeColor: "red",
+                strokeOpacity: 0.5,
+            },
+        });
 
-    directionsRenderers = [selectedRoute.renderer, returnRenderer];
+        directionsRenderers = [selectedRoute.renderer, returnRenderer];
+    }
 
-    // Fit map bounds to show entire route
     const bounds = new google.maps.LatLngBounds();
     result.routes[0].overview_path.forEach(point => bounds.extend(point));
     map.fitBounds(bounds);
 }
 
-function clearMarkers() {
-    markers.forEach(marker => marker.setMap(null));
-    markers = [];
+function generateLoop(startLocation, totalDistance) {
+    const numDirections = 8;
+    const angleStep = 360 / numDirections;
+    clearRoutes();
+    
+    const routePromises = [];
+    
+    for (let i = 0; i < numDirections; i++) {
+        const angle = i * angleStep;
+        const waypoint = calculateDestinationPoint(startLocation, totalDistance * 0.25, angle);
+        routePromises.push(generateRoute(startLocation, waypoint, i, true));
+    }
+
+    Promise.all(routePromises)
+        .then(routes => {
+            const validRoutes = routes.filter(route => route !== null);
+            if (validRoutes.length === 0) {
+                alert("No valid routes found. Try a different distance or location.");
+                return;
+            }
+            displayRoutes(validRoutes);
+        })
+        .catch(error => {
+            console.error("Error generating routes:", error);
+            alert("Error generating routes. Please try again.");
+        });
 }
 
 function clearRoutes() {
@@ -253,4 +305,9 @@ function clearRoutes() {
         if (renderer) renderer.setMap(null);
     });
     directionsRenderers = [];
+}
+
+function clearMarkers() {
+    markers.forEach(marker => marker.setMap(null));
+    markers = [];
 }

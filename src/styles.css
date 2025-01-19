@@ -1,3 +1,17 @@
+:root {
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --nav-bg: #393950;
+    --background: #f8fafc;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text-secondary: #64748b;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -7,7 +21,9 @@
 html, body {
     height: 100%;
     overflow: hidden;
-    background-color: wheat;
+    background-color: var(--background);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 body {
@@ -16,29 +32,48 @@ body {
 }
 
 .navbar {
-    height: 60px;
-    padding: 0 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: 80px;
+    padding: 0 24px;
+    background: var(--nav-bg);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 32px;
 }
 
 .logo img {
-    height: 290px;
+    height: 240px;
     margin-left: -40px;
+    margin-top: -20px;
+    margin-bottom: -20px;
+    object-fit: contain;
 }
 
 #inputs-container {
+    flex: 1;
+    max-width: 900px;
     display: flex;
-    gap: 10px;
+    gap: 12px;
+    align-items: center;
+    margin-right: 24px;
 }
 
-#inputs-container input {
-    height: 36px;
-    padding: 0 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+#inputs-container input[type="text"],
+#inputs-container input[type="number"] {
+    height: 42px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+#inputs-container input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 #location-input {
@@ -49,50 +84,218 @@ body {
     width: 120px;
 }
 
+.route-type {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px;
+    border-radius: 8px;
+}
+
+.route-type label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.route-type input[type="radio"] {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    background: transparent;
+    border-radius: 50%;
+    margin: 0;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.route-type input[type="radio"]:checked {
+    border-color: var(--primary);
+    background: var(--primary);
+}
+
+.route-type label:has(input:checked) {
+    background: rgba(255, 255, 255, 0.15);
+}
+
 #inputs-container input[type="button"] {
-    padding: 0 20px;
-    background: #4285f4;
+    height: 42px;
+    min-width: 120px;
+    padding: 0 24px;
+    background: var(--primary);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
 }
 
 #inputs-container input[type="button"]:hover {
-    background: #3367d6;
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+#inputs-container input[type="button"]:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+/* Loading Button State */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+#inputs-container input[type="button"].loading {
+    color: transparent;
+    cursor: wait;
+}
+
+#inputs-container input[type="button"].loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
 }
 
 main {
     flex: 1;
     position: relative;
     display: flex;
+    gap: 1px;
+    background: var(--border);
 }
 
 #map {
     flex: 1;
+    background: var(--surface);
 }
 
 #routes-container {
-    background-color: whitesmoke;
-    width: 300px;
-    box-shadow: -2px 0 4px rgba(0,0,0,0.1);
-    padding: 20px;
+    width: 320px;
+    background: var(--surface);
+    padding: 24px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--text-secondary) transparent;
+}
+
+#routes-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+#routes-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#routes-container::-webkit-scrollbar-thumb {
+    background-color: var(--text-secondary);
+    border-radius: 4px;
+}
+
+#routes-container h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text);
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
 }
 
 #routes-table {
-    margin-top: 10px;
     width: 100%;
     border-collapse: collapse;
+    font-size: 14px;
 }
 
 #routes-table th,
 #routes-table td {
-    padding: 10px;
+    padding: 12px;
     text-align: center;
-    border: 1px solid #ddd;
+    border-bottom: 1px solid var(--border);
 }
 
 #routes-table th {
-    background: #f5f5f5;
+    background: var(--background);
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
+.route-row {
+    transition: all 0.3s ease;
+    border-left: 3px solid transparent;
+}
+
+.route-row:hover {
+    background: var(--background);
+    border-left-color: var(--border);
+}
+
+.route-row.active {
+    background: var(--background);
+    border-left-color: var(--primary);
+}
+
+.distance-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-weight: 500;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.distance-badge.short {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--green);
+}
+
+.distance-badge.medium {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--yellow);
+}
+
+.distance-badge.long {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--red);
+}
+
+#routes-table input[type="radio"] {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--text-secondary);
+    border-radius: 50%;
+    margin: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#routes-table input[type="radio"]:checked {
+    border-color: var(--primary);
+    background: var(--primary);
 }
