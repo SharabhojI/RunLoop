@@ -1,5 +1,19 @@
+// Default settings state
+const settings = {
+    distanceTolerance: 15,
+    routeVariations: 8,
+    avoidHighways: false,
+    preferParks: false
+};
+
+// Constants that can be modified by settings
+let DISTANCE_TOLERANCE = 0.15; // Default 15%
+let ROUTE_VARIATIONS = 8;
+
 document.addEventListener("DOMContentLoaded", () => {
     loadMapsAPI();
+    loadSettings();
+    document.getElementById('settings-toggle').addEventListener('click', toggleSettings);
 });
 
 async function loadMapsAPI() {
@@ -57,6 +71,47 @@ function initMap() {
     });
 }
 
+function toggleSettings() {
+    const panel = document.getElementById('settings-panel');
+    panel.classList.toggle('active');
+}
+
+function updateSetting(setting, value) {
+    settings[setting] = typeof value === 'string' ? parseFloat(value) : value;
+    
+    // Update display values for sliders
+    if (setting === 'distanceTolerance') {
+        document.getElementById('distance-tolerance-value').textContent = `${value}%`;
+        DISTANCE_TOLERANCE = value / 100;
+    } else if (setting === 'routeVariations') {
+        document.getElementById('route-variations-value').textContent = value;
+        ROUTE_VARIATIONS = parseInt(value);
+    }
+    
+    // Store settings in localStorage
+    localStorage.setItem('runloop_settings', JSON.stringify(settings));
+}
+
+function loadSettings() {
+    const savedSettings = localStorage.getItem('runloop_settings');
+    if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        Object.assign(settings, parsed);
+        
+        // Update UI to reflect loaded settings
+        document.getElementById('distance-tolerance').value = settings.distanceTolerance;
+        document.getElementById('distance-tolerance-value').textContent = `${settings.distanceTolerance}%`;
+        document.getElementById('route-variations').value = settings.routeVariations;
+        document.getElementById('route-variations-value').textContent = settings.routeVariations;
+        document.getElementById('avoid-highways').checked = settings.avoidHighways;
+        document.getElementById('prefer-parks').checked = settings.preferParks;
+        
+        // Update constants
+        DISTANCE_TOLERANCE = settings.distanceTolerance / 100;
+        ROUTE_VARIATIONS = settings.routeVariations;
+    }
+}
+
 function geocodeAddress() {
     clearMarkers();
     clearRoutes();
@@ -102,33 +157,84 @@ function geocodeAddress() {
     });
 }
 
-function generateOutAndBack(startLocation, totalDistance) {
-    const halfDistance = totalDistance / 2;
-    const numDirections = 8;
-    const angleStep = 360 / numDirections;
-    
-    clearRoutes();
-    const routePromises = [];
-    
-    for (let i = 0; i < numDirections; i++) {
-        const angle = i * angleStep;
-        const destination = calculateDestinationPoint(startLocation, halfDistance, angle);
-        routePromises.push(generateRoute(startLocation, destination, i, false));
+async function generateOptimizedRoute(start, targetDistance, angle, isLoop = false) {
+    let currentDistance = targetDistance;
+    let iteration = 0;
+    let bestRoute = null;
+    let bestDistanceDiff = Infinity;
+
+    while (iteration < 3) {
+        const destination = calculateDestinationPoint(
+            start, 
+            isLoop ? currentDistance * 0.25 : currentDistance * 0.5, 
+            angle
+        );
+
+        const route = await generateRoute(start, destination, 0, isLoop);
+        
+        if (!route) {
+            iteration++;
+            currentDistance *= 0.8; // Try a shorter distance if route fails
+            continue;
+        }
+
+        const routeDistance = isLoop ? 
+            parseFloat(route.routeDetails.legs[0].distance.text) :
+            parseFloat(route.routeDetails.legs[0].distance.text) * 2;
+
+        const distanceDiff = Math.abs(routeDistance - targetDistance);
+        
+        // Check if this route is better than our previous best
+        if (distanceDiff < bestDistanceDiff) {
+            bestRoute = route;
+            bestDistanceDiff = distanceDiff;
+        }
+
+        // If within tolerance, return this route
+        if (distanceDiff / targetDistance <= DISTANCE_TOLERANCE) {
+            return route;
+        }
+
+        // Adjust distance for next iteration
+        const ratio = targetDistance / routeDistance;
+        currentDistance *= ratio;
+        iteration++;
     }
 
-    Promise.all(routePromises)
-        .then(routes => {
-            const validRoutes = routes.filter(route => route !== null);
-            if (validRoutes.length === 0) {
-                alert("No valid routes found. Try a different distance or location.");
-                return;
-            }
-            displayRoutes(validRoutes);
-        })
-        .catch(error => {
-            console.error("Error generating routes:", error);
-            alert("Error generating routes. Please try again.");
+    // Return best route found if we couldn't get within tolerance
+    return bestRoute;
+}
+
+async function generateOptimizedRoutes(startLocation, totalDistance, isLoop = false) {
+    const angleStep = 360 / ROUTE_VARIATIONS;
+    const routePromises = [];
+    
+    for (let i = 0; i < ROUTE_VARIATIONS; i++) {
+        const angle = i * angleStep;
+        routePromises.push(generateOptimizedRoute(startLocation, totalDistance, angle, isLoop));
+    }
+
+    const routes = await Promise.all(routePromises);
+    const validRoutes = routes.filter(route => route !== null)
+        .sort((a, b) => {
+            const distA = getRouteDistance(a, isLoop);
+            const distB = getRouteDistance(b, isLoop);
+            const diffA = Math.abs(distA - totalDistance);
+            const diffB = Math.abs(distB - totalDistance);
+            return diffA - diffB;
         });
+
+    if (validRoutes.length < 3) {
+        throw new Error("Insufficient valid routes found");
+    }
+
+    // Return the best routes
+    return validRoutes.slice(0, 5);
+}
+
+function getRouteDistance(route, isLoop) {
+    const singleDistance = parseFloat(route.routeDetails.legs[0].distance.text);
+    return isLoop ? singleDistance : singleDistance * 2;
 }
 
 function calculateDestinationPoint(start, distance, angle) {
@@ -142,17 +248,22 @@ function calculateDestinationPoint(start, distance, angle) {
 
 function generateRoute(start, destination, index, isLoop = false) {
     return new Promise((resolve, reject) => {
-        const request = isLoop ? {
-            origin: start,
-            destination: start,
-            waypoints: [{ location: destination, stopover: false }],
+        const request = {
+            ...(isLoop ? {
+                origin: start,
+                destination: start,
+                waypoints: [{ location: destination, stopover: false }],
+            } : {
+                origin: start,
+                destination: destination,
+            }),
             travelMode: google.maps.TravelMode.WALKING,
-            optimizeWaypoints: true
-        } : {
-            origin: start,
-            destination: destination,
-            travelMode: google.maps.TravelMode.WALKING,
+            avoidHighways: settings.avoidHighways
         };
+
+        if (settings.preferParks) {
+            request.provideRouteAlternatives = true;
+        }
 
         directionsService.route(request, (result, status) => {
             if (status === google.maps.DirectionsStatus.OK) {
@@ -177,6 +288,32 @@ function generateRoute(start, destination, index, isLoop = false) {
             }
         });
     });
+}
+
+function generateLoop(startLocation, totalDistance) {
+    clearRoutes();
+    
+    generateOptimizedRoutes(startLocation, totalDistance, true)
+        .then(routes => {
+            displayRoutes(routes);
+        })
+        .catch(error => {
+            console.error("Error generating routes:", error);
+            alert("Error finding suitable routes. Try a different distance or location.");
+        });
+}
+
+function generateOutAndBack(startLocation, totalDistance) {
+    clearRoutes();
+    
+    generateOptimizedRoutes(startLocation, totalDistance, false)
+        .then(routes => {
+            displayRoutes(routes);
+        })
+        .catch(error => {
+            console.error("Error generating routes:", error);
+            alert("Error finding suitable routes. Try a different distance or location.");
+        });
 }
 
 function displayRoutes(routes) {
@@ -233,14 +370,16 @@ function highlightRoute(index, routes) {
 
     const selectedRoute = routes[index];
     if (!selectedRoute) return;
+    let result;
 
     if (selectedRoute.isLoop) {
         selectedRoute.renderer.setMap(map);
         directionsRenderers = [selectedRoute.renderer];
+        result = selectedRoute.renderer.getDirections();
     } else {
         selectedRoute.renderer.setMap(map);
+        result = selectedRoute.renderer.getDirections();
 
-        const result = selectedRoute.renderer.getDirections();
         const returnResult = {
             routes: [{
                 legs: [{
@@ -270,34 +409,6 @@ function highlightRoute(index, routes) {
     const bounds = new google.maps.LatLngBounds();
     result.routes[0].overview_path.forEach(point => bounds.extend(point));
     map.fitBounds(bounds);
-}
-
-function generateLoop(startLocation, totalDistance) {
-    const numDirections = 8;
-    const angleStep = 360 / numDirections;
-    clearRoutes();
-    
-    const routePromises = [];
-    
-    for (let i = 0; i < numDirections; i++) {
-        const angle = i * angleStep;
-        const waypoint = calculateDestinationPoint(startLocation, totalDistance * 0.25, angle);
-        routePromises.push(generateRoute(startLocation, waypoint, i, true));
-    }
-
-    Promise.all(routePromises)
-        .then(routes => {
-            const validRoutes = routes.filter(route => route !== null);
-            if (validRoutes.length === 0) {
-                alert("No valid routes found. Try a different distance or location.");
-                return;
-            }
-            displayRoutes(validRoutes);
-        })
-        .catch(error => {
-            console.error("Error generating routes:", error);
-            alert("Error generating routes. Please try again.");
-        });
 }
 
 function clearRoutes() {

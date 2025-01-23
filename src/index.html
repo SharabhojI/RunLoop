@@ -29,6 +29,12 @@
                 </div>
                 <input type="button" value="Plan Run" onclick="geocodeAddress()" />
             </div>
+            <button id="settings-toggle" class="settings-button" type="button" aria-label="Toggle Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+            </button>
         </nav>
         <main>
             <div id="map"></div>
@@ -44,6 +50,52 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+            </div>
+            <div id="settings-panel" class="settings-panel">
+                <div class="settings-header">
+                    <h3>Route Settings</h3>
+                    <button class="close-button" onclick="toggleSettings()">×</button>
+                </div>
+                
+                <div class="settings-section">
+                    <h4>Route Generation</h4>
+                    <div class="setting-group">
+                        <label>
+                            <span>Distance Tolerance (%)</span>
+                            <input type="range" id="distance-tolerance" min="5" max="30" value="15" 
+                                oninput="updateSetting('distanceTolerance', this.value)">
+                            <span class="setting-value" id="distance-tolerance-value">15%</span>
+                        </label>
+                    </div>
+                    
+                    <div class="setting-group">
+                        <label>
+                            <span>Route Variations</span>
+                            <input type="range" id="route-variations" min="4" max="12" value="8" step="2"
+                                oninput="updateSetting('routeVariations', this.value)">
+                            <span class="setting-value" id="route-variations-value">8</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4>Route Preferences</h4>
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="avoid-highways" 
+                                onchange="updateSetting('avoidHighways', this.checked)">
+                            <span>Avoid Highways</span>
+                        </label>
+                    </div>
+                    
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="prefer-parks" 
+                                onchange="updateSetting('preferParks', this.checked)">
+                            <span>Prefer Parks & Trails</span>
+                        </label>
+                    </div>
+                </div>
             </div>
         </main>        
     </body>
