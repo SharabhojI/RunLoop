@@ -3,7 +3,8 @@ const settings = {
     distanceTolerance: 15,
     routeVariations: 8,
     avoidHighways: false,
-    preferParks: false
+    preferParks: false,
+    runningPace: 5.5
 };
 
 // Constants that can be modified by settings
@@ -65,6 +66,14 @@ function initMap() {
         const originMarker = new google.maps.Marker({
             map: map,
             position: place.geometry.location,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: "#2563eb",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+            }
         });
         markers.push(originMarker);
         map.setZoom(15);
@@ -86,6 +95,12 @@ function updateSetting(setting, value) {
     } else if (setting === 'routeVariations') {
         document.getElementById('route-variations-value').textContent = value;
         ROUTE_VARIATIONS = parseInt(value);
+    } else if (setting === 'runningPace') {
+        // Format pace as minutes:seconds
+        const minutes = Math.floor(value);
+        const seconds = Math.round((value - minutes) * 60);
+        document.getElementById('running-pace-value').textContent = 
+            `${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
     
     // Store settings in localStorage
@@ -105,6 +120,15 @@ function loadSettings() {
         document.getElementById('route-variations-value').textContent = settings.routeVariations;
         document.getElementById('avoid-highways').checked = settings.avoidHighways;
         document.getElementById('prefer-parks').checked = settings.preferParks;
+        
+        // Add pace settings update
+        if (document.getElementById('running-pace')) {
+            document.getElementById('running-pace').value = settings.runningPace;
+            const minutes = Math.floor(settings.runningPace);
+            const seconds = Math.round((settings.runningPace - minutes) * 60);
+            document.getElementById('running-pace-value').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
         
         // Update constants
         DISTANCE_TOLERANCE = settings.distanceTolerance / 100;
@@ -140,6 +164,14 @@ function geocodeAddress() {
             const startMarker = new google.maps.Marker({
                 map: map,
                 position: startLocation,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor: "#2563eb",
+                    fillOpacity: 1,
+                    strokeColor: "#ffffff",
+                    strokeWeight: 2,
+                }
             });
             markers.push(startMarker);
 
@@ -170,7 +202,7 @@ async function generateOptimizedRoute(start, targetDistance, angle, isLoop = fal
             angle
         );
 
-        const route = await generateRoute(start, destination, 0, isLoop);
+        const route = await generateRoute(start, destination, 0, isLoop, targetDistance);
         
         if (!route) {
             iteration++;
@@ -246,7 +278,7 @@ function calculateDestinationPoint(start, distance, angle) {
     );
 }
 
-function generateRoute(start, destination, index, isLoop = false) {
+function generateRoute(start, destination, index, isLoop = false, targetDistance = 0) {
     return new Promise((resolve, reject) => {
         const request = {
             ...(isLoop ? {
@@ -258,15 +290,30 @@ function generateRoute(start, destination, index, isLoop = false) {
                 destination: destination,
             }),
             travelMode: google.maps.TravelMode.WALKING,
-            avoidHighways: settings.avoidHighways
+            avoidHighways: settings.avoidHighways,
+            provideRouteAlternatives: true,
+            optimizeWaypoints: settings.preferParks
         };
-
-        if (settings.preferParks) {
-            request.provideRouteAlternatives = true;
-        }
 
         directionsService.route(request, (result, status) => {
             if (status === google.maps.DirectionsStatus.OK) {
+                if (settings.preferParks && result.routes.length > 1) {
+                    // If we got multiple routes, pick the one that's closest to our target distance
+                    let bestRoute = result.routes[0];
+                    let bestDistanceDiff = Infinity;
+                    result.routes.forEach(route => {
+                        const distance = isLoop ? 
+                            parseFloat(route.legs[0].distance.text) :
+                            parseFloat(route.legs[0].distance.text) * 2;
+                        const diff = Math.abs(distance - targetDistance);
+                        if (diff < bestDistanceDiff) {
+                            bestRoute = route;
+                            bestDistanceDiff = diff;
+                        }
+                    });
+                    result.routes = [bestRoute];
+                }
+        
                 const renderer = new google.maps.DirectionsRenderer({
                     map: null,
                     directions: result,
@@ -276,12 +323,13 @@ function generateRoute(start, destination, index, isLoop = false) {
                         strokeOpacity: 0.5,
                     },
                 });
-
+        
                 resolve({
                     index,
                     renderer,
                     routeDetails: result.routes[0],
-                    isLoop: isLoop
+                    isLoop: isLoop,
+                    endpoint: destination
                 });
             } else {
                 resolve(null);
@@ -361,8 +409,85 @@ function getDistanceBadgeClass(distance) {
     return 'long';
 }
 
+function formatInstructions(steps) {
+    // Clean up the HTML-formatted instructions
+    const stripHTML = (html) => {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText;
+    };
+
+    const directionsList = document.getElementById('directions-list');
+    directionsList.innerHTML = '';
+
+    steps.forEach((step, index) => {
+        const stepElement = document.createElement('div');
+        stepElement.className = 'direction-step';
+
+        stepElement.innerHTML = `
+            <div class="step-number">${index + 1}</div>
+            <div class="step-details">
+                <div class="step-instruction">${stripHTML(step.instructions)}</div>
+                <div class="step-distance">${step.distance.text}</div>
+            </div>
+        `;
+
+        directionsList.appendChild(stepElement);
+    });
+}
+
+function updateRouteInfo(route, isLoop) {
+    const container = document.getElementById('route-info-container');
+    container.classList.add('active');
+
+    // Calculate total distance
+    const singleDistance = parseFloat(route.legs[0].distance.text);
+    const totalDistance = isLoop ? singleDistance : singleDistance * 2;
+    
+    const paceInMinutesPerKm = settings.runningPace;
+    const totalMinutes = Math.round(totalDistance * paceInMinutesPerKm);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    // Update summary information
+    document.getElementById('total-distance').textContent = `${totalDistance.toFixed(1)} km`;
+    document.getElementById('total-time').textContent = hours > 0 
+        ? `${hours}h ${minutes}m` 
+        : `${minutes}m`;
+
+    // Update directions
+    if (isLoop) {
+        formatInstructions(route.legs[0].steps);
+    } else {
+        // For out and back, combine outward and return directions
+        const outwardSteps = route.legs[0].steps;
+        const returnSteps = [...route.legs[0].steps]
+            .reverse()
+            .map(step => ({
+                ...step,
+                instructions: step.instructions.replace(
+                    /(Turn|Head|Continue|Keep) (left|right|straight|east|west|north|south)/i,
+                    (_, action, direction) => {
+                        const opposites = {
+                            left: 'right',
+                            right: 'left',
+                            east: 'west',
+                            west: 'east',
+                            north: 'south',
+                            south: 'north'
+                        };
+                        return `${action} ${opposites[direction.toLowerCase()] || direction}`;
+                    }
+                )
+            }));
+        
+        formatInstructions([...outwardSteps, ...returnSteps]);
+    }
+}
+
 function highlightRoute(index, routes) {
     clearRoutes();
+    clearMarkers();
 
     const rows = document.querySelectorAll('.route-row');
     rows.forEach(row => row.classList.remove('active'));
@@ -372,10 +497,43 @@ function highlightRoute(index, routes) {
     if (!selectedRoute) return;
     let result;
 
+    // Add start marker
+    const startMarker = new google.maps.Marker({
+        map: map,
+        position: selectedRoute.routeDetails.legs[0].start_location,
+        icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: "#2563eb",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+        }
+    });
+    markers.push(startMarker);
+
+    // Add endpoint marker for out-and-back routes
+    if (!selectedRoute.isLoop) {
+        const endMarker = new google.maps.Marker({
+            map: map,
+            position: selectedRoute.endpoint,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: "#ef4444",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+            }
+        });
+        markers.push(endMarker);
+    }
+
     if (selectedRoute.isLoop) {
         selectedRoute.renderer.setMap(map);
         directionsRenderers = [selectedRoute.renderer];
         result = selectedRoute.renderer.getDirections();
+        updateRouteInfo(result.routes[0], true);
     } else {
         selectedRoute.renderer.setMap(map);
         result = selectedRoute.renderer.getDirections();
@@ -404,6 +562,7 @@ function highlightRoute(index, routes) {
         });
 
         directionsRenderers = [selectedRoute.renderer, returnRenderer];
+        updateRouteInfo(result.routes[0], false);
     }
 
     const bounds = new google.maps.LatLngBounds();
@@ -415,7 +574,10 @@ function clearRoutes() {
     directionsRenderers.forEach(renderer => {
         if (renderer) renderer.setMap(null);
     });
-    directionsRenderers = [];
+    directionsRenderers = [];    
+
+    // Hide route info panel
+    document.getElementById('route-info-container').classList.remove('active');
 }
 
 function clearMarkers() {
